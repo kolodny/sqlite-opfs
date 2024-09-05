@@ -1,0 +1,79 @@
+{
+	"name": "sqlite-opfs",
+	"version": "0.0.0",
+	"description": "Sqlite wasm build using the origin private file system",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/kolodny/sqlite-opfs"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "Moshe Kolodny",
+		"email": "kolodny.github@gmail.com"
+	},
+	"type": "module",
+	"exports": {
+		".": {
+			"types": {
+				"import": "./lib/index.d.ts",
+				"require": "./lib/index.d.cts"
+			},
+			"import": "./lib/index.js",
+			"require": "./lib/index.cjs"
+		},
+		"./worker": {
+			"types": "./lib/worker.d.ts",
+			"import": "./lib/worker.js",
+			"require": "./lib/worker.cjs"
+		}
+	},
+	"main": "./lib/index.js",
+	"files": [
+		"lib/",
+		"package.json",
+		"LICENSE.md",
+		"README.md"
+	],
+	"scripts": {
+		"build": "tsup",
+		"format": "prettier .",
+		"lint": "eslint . --max-warnings 0",
+		"lint:md": "markdownlint \"**/*.md\" \".github/**/*.md\" --rules sentences-per-line",
+		"prepare": "husky",
+		"tsc": "tsc"
+	},
+	"lint-staged": {
+		"*": "prettier --ignore-unknown --write"
+	},
+	"devDependencies": {
+		"@eslint-community/eslint-plugin-eslint-comments": "^4.4.0",
+		"@eslint/js": "^9.9.1",
+		"@sqlite.org/sqlite-wasm": "3.46.1-build3",
+		"@types/eslint-plugin-markdown": "^2.0.2",
+		"@types/eslint__js": "^8.42.3",
+		"@types/node": "^22.5.3",
+		"eslint": "^9.9.1",
+		"eslint-plugin-markdown": "^5.1.0",
+		"eslint-plugin-n": "^17.10.2",
+		"eslint-plugin-package-json": "^0.15.2",
+		"husky": "^9.1.5",
+		"jsonc-eslint-parser": "^2.4.0",
+		"lint-staged": "^15.2.10",
+		"markdownlint": "^0.35.0",
+		"markdownlint-cli": "^0.41.0",
+		"prettier": "^3.3.3",
+		"prettier-plugin-curly": "^0.2.2",
+		"prettier-plugin-packagejson": "^2.5.2",
+		"prettier-plugin-sh": "^0.14.0",
+		"sentences-per-line": "^0.2.1",
+		"tsup": "^8.2.4",
+		"typescript": "^5.5.4",
+		"typescript-eslint": "^8.4.0"
+	},
+	"peerDependencies": {
+		"@sqlite.org/sqlite-wasm": "*"
+	},
+	"engines": {
+		"node": ">=18.3.0"
+	}
+}
