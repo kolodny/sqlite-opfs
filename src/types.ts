@@ -42,17 +42,36 @@ export type BaseSelect =
 	| number[]
 	| [number[]];
 
-export type RowType<Select extends BaseSelect> = Select extends []
-	? Record<string, SqlValue>
-	: // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-		Select extends [{}]
-		? Record<string, SqlValue>
-		: Select extends string[]
-			? Record<Select[number], SqlValue>
-			: Select extends [string[]]
-				? SqlValue[]
-				: Select extends number[]
-					? SqlValue[]
-					: Select extends [number[]]
+export type RowType<Select extends BaseSelect> = Select extends [number[]]
+	? SqlValue[]
+	: Select extends [string[]]
+		? SqlValue[]
+		: Select extends []
+			? Record<string, SqlValue>
+			: Select extends string[]
+				? Record<Select[number], SqlValue>
+				: Select extends []
+					? Record<string, SqlValue>
+					: Select extends [[]]
 						? SqlValue[]
-						: SqlValue[];
+						: // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+							Select extends [{}]
+							? Record<string, SqlValue>
+							: Select extends string[]
+								? Record<Select[number], SqlValue>
+								: Select extends [string[]]
+									? SqlValue[]
+									: Select extends number[]
+										? SqlValue[]
+										: Select extends [number[]]
+											? SqlValue[]
+											: SqlValue[];
+
+// type Test1 = RowType<[]>; // Record<string, SqlValue>
+// type Test2 = RowType<[{}]>; // Record<string, SqlValue>
+// type Test3 = RowType<string[]>; // Record<string, SqlValue>
+// type Test4 = RowType<[string[]]>; // SqlValue[]
+// type Test5 = RowType<number[]>; // SqlValue[]
+// type Test6 = RowType<[number[]]>; // SqlValue[]
+// type Test7 = RowType<[[]]>; // SqlValue[]
+// type Test8 = RowType<['a', 'b']> // Record<'a' | 'b', SqlValue>

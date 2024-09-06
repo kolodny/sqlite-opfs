@@ -17,11 +17,26 @@ There are two requirements for this library to work:
 
 You may need to use something like https://github.com/gzuidhof/coi-serviceworker if you can't control the headers on the server.
 
-## Usage
+## Installation
 
 ```shell
-npm i sqlite-opfs
+npm i sqlite-opfs @sqlite.org/sqlite-wasm
 ```
+
+Note that `@sqlite.org/sqlite-wasm` is a peer dependency which is why it's not included in the installation command.
+
+Vite users will also have to add `optimizeDeps` this to their vite config:
+
+```ts
+export default defineConfig({
+	optimizeDeps: {
+		exclude: ['@sqlite.org/sqlite-wasm'],
+	},
+	// ...
+});
+```
+
+## Usage
 
 ```ts
 import init from 'sqlite-opfs';
@@ -80,7 +95,7 @@ await Promise.all([
 Note the `one()` and `all()` methods also take a selector for the format of the result.
 
 ```ts
-console.log('one', await db`SELECT * FROM myTable`.one('id', 'name')); // logs { name: SqlValue }
+console.log('one', await db`SELECT * FROM myTable`.one('id', 'name')); // logs { id: SqlValue, name: SqlValue }
 console.log('one', await db`SELECT * FROM myTable`.one(['id', 'name'])); // logs SqlValue[]
 console.log('one', await db`SELECT * FROM myTable`.one([])); // logs all as SqlValue[]
 console.log('one', await db`SELECT * FROM myTable`.one()); // logs all as Record<string, SqlValue>

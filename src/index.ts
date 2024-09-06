@@ -201,22 +201,18 @@ export default async function initWrapper(options: Options) {
 						void
 					>,
 					/** Runs the sql and returns the first row */
-					one: async (...select: BaseSelect) => {
+					one: async <Select extends BaseSelect>(...select: Select) => {
 						for await (const data of iter()) {
-							if (data) {
-								const [row, columns] = data;
-								return rowType(row, columns, select);
-							}
+							const [row, columns] = data;
+							return rowType(row, columns, select) as RowType<Select>;
 						}
 					},
 					/** Runs the sql and returns all rows */
 					all: async <Select extends BaseSelect>(...select: Select) => {
 						const rows: RowType<Select>[] = [];
 						for await (const data of iter()) {
-							if (data) {
-								const [row, columns] = data;
-								rows.push(rowType(row, columns, select) as RowType<Select>);
-							}
+							const [row, columns] = data;
+							rows.push(rowType(row, columns, select) as RowType<Select>);
 						}
 						return rows;
 					},
