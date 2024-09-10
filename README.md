@@ -109,7 +109,7 @@ You can also wrap the worker in a worker of your own to have code that lives wit
 import { addHook } from 'sqlite-opfs/worker';
 
 addHook({
-	open: async (db) => {
+	onOpen: async (db) => {
 		db.createFunction(
 			'add_numbers',
 			(_ctx, ...args) => {

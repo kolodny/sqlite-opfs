@@ -72,22 +72,32 @@ export const App: FunctionComponent = () => {
 					id="sql"
 					rows={5}
 					style={{ width: 800 }}
+					onKeyDown={(e) => {
+						if (e.key === 'Enter' && !e.metaKey && !e.shiftKey && !e.ctrlKey) {
+							e.preventDefault();
+							exec();
+						}
+					}}
 				/>
 			</div>
 			<div>
-				<table>
+				<table style={{ border: '1px solid', borderCollapse: 'collapse' }}>
 					<tbody>
 						{!!results.length && (
 							<tr>
 								{Object.keys(results[0]).map((key) => (
-									<th key={key}>{key}</th>
+									<th style={{ border: '1px solid', padding: 4 }} key={key}>
+										{key}
+									</th>
 								))}
 							</tr>
 						)}
 						{results.map((result, i) => (
 							<tr key={i}>
 								{Object.entries(result).map(([key, value]) => (
-									<td key={key}>{value}</td>
+									<td style={{ border: '1px solid', padding: 4 }} key={key}>
+										{value}
+									</td>
 								))}
 							</tr>
 						))}

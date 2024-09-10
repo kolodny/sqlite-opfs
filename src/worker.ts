@@ -1,6 +1,7 @@
 /* eslint-disable @eslint-community/eslint-comments/disable-enable-pair */
+/* eslint-disable n/no-unsupported-features/node-builtins */
 /* eslint-disable @typescript-eslint/no-dynamic-delete */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
+
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
@@ -13,21 +14,21 @@ import type {
 } from '@sqlite.org/sqlite-wasm';
 
 import init from '@sqlite.org/sqlite-wasm';
+import { ImportSource } from './types.js';
 
 type Async<T = void> = T | Promise<T>;
 
 interface Hook {
-	init?: (sqlite3: Sqlite3Static) => Async;
-	open?: (opened: OpfsDatabase) => Async;
-	exec?: (
+	beforeInit?: (options: InitOptions) => Async<InitOptions>;
+	onInit?: (sqlite3: Sqlite3Static) => Async;
+	onOpen?: (opened: OpfsDatabase, sqlite3: Sqlite3Static) => Async;
+	onExec?: (
 		sql: string,
 		bind: unknown[] | undefined,
 		stmt: PreparedStatement,
 		execId: string,
 	) => Async;
-	dispose?: (execId: string) => Async;
-	print?: (msg: string) => void;
-	printErr?: (msg: string) => void;
+	onDispose?: (execId: string) => Async;
 }
 
 declare global {
@@ -41,24 +42,13 @@ declare global {
 
 self.openDbs = {};
 self.openExecs = {};
-let print: ((msg: string) => void) | undefined;
-let printErr: ((msg: string) => void) | undefined;
 const hooks: Hook[] = [];
-const addHook = (self.addHook = (hook) => {
-	hooks.push(hook);
 
-	if (hook.print) {
-		print = hook.print;
-	}
-	if (hook.printErr) {
-		printErr = hook.printErr;
-	}
-});
-
-export { addHook };
+export const addHook = (self.addHook = (hook) => hooks.push(hook));
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
 let message = (event: MessageEvent) => {};
+const post = (item: unknown) => (self.postMessage(item), true);
 
 self.addEventListener('message', (event) => {
 	message(event);
@@ -71,14 +61,18 @@ interface Options {
 }
 
 const start = async (options: Options = {}) => {
-	const initOptions: InitOptions = { print, printErr };
+	const initOptions: InitOptions = {};
 	if (typeof options.wasmBinary === 'string') {
 		initOptions.locateFile = () => options.wasmBinary as string;
 	} else if (typeof options.wasmBinary === 'object') {
 		(initOptions as Record<string, unknown>).wasmBinary = options.wasmBinary;
 	}
 
-	const sqlite3: Sqlite3Static = await init(initOptions);
+	let hookedOptions = initOptions;
+	for (const hook of hooks) {
+		hookedOptions = (await hook.beforeInit?.(hookedOptions)) ?? hookedOptions;
+	}
+	const sqlite3: Sqlite3Static = await init(hookedOptions);
 
 	const assert = <T>(obj: T | undefined) => {
 		if (!obj) {
@@ -89,6 +83,41 @@ const start = async (options: Options = {}) => {
 	const affirm = (db: OpfsDatabase | undefined) => assert(db).affirmOpen();
 
 	const api = {
+		import: async (dbName: string, source: ImportSource, id: string) => {
+			openDbs[dbName]?.close();
+			const dir = await navigator.storage.getDirectory();
+			const file = await dir.getFileHandle(dbName, { create: true });
+			const writer = await file.createWritable();
+
+			if (source instanceof Uint8Array) {
+				await writer.write(source);
+				await writer.close();
+				return;
+			}
+
+			if (typeof source === 'string') {
+				const readerIter = async function* () {
+					const response = await fetch(source);
+					const reader = response.body?.getReader();
+					let read = await reader?.read();
+					while (!read?.done) {
+						yield read?.value;
+						read = await reader?.read();
+					}
+				};
+				let processed = 0;
+				for await (const chunk of readerIter()) {
+					if (!chunk) {
+						continue;
+					}
+
+					await writer.write(chunk);
+					processed += chunk.length;
+					self.postMessage({ type: 'importProgress', id, processed });
+				}
+				await writer.close();
+			}
+		},
 		open: async (dbName: string) => {
 			if (!openDbs[dbName]) {
 				type Oo1 = typeof sqlite3.oo1;
@@ -104,7 +133,7 @@ const start = async (options: Options = {}) => {
 				openDbs[dbName] = opened;
 			}
 			for (const hook of hooks) {
-				await hook.open?.(openDbs[dbName]);
+				await hook.onOpen?.(openDbs[dbName], sqlite3);
 			}
 
 			return dbName;
@@ -131,7 +160,7 @@ const start = async (options: Options = {}) => {
 			})();
 
 			for (const hook of hooks) {
-				await hook.exec?.(sql, bind, stmt, execId);
+				await hook.onExec?.(sql, bind, stmt, execId);
 			}
 
 			return execId;
@@ -151,7 +180,7 @@ const start = async (options: Options = {}) => {
 		},
 		dispose: async (execId: string) => {
 			for (const hook of hooks) {
-				await hook.dispose?.(execId);
+				await hook.onDispose?.(execId);
 			}
 			openExecs[execId]?.return();
 			delete openExecs[execId];
@@ -159,20 +188,19 @@ const start = async (options: Options = {}) => {
 	};
 
 	for (const hook of hooks) {
-		await hook.init?.(sqlite3);
+		await hook.onInit?.(sqlite3);
 	}
 
 	message = ({ data: event }) => {
-		const { id, key, args } = event;
-		void (async () => {
-			try {
-				// @ts-ignore
-				const result = await api[`${key}`](...args);
-				self.postMessage({ id, result });
-			} catch (error) {
-				self.postMessage({ id, error });
-			}
-		})();
+		const { type, id, key, args } = event;
+		if (type !== 'apiCall') {
+			return;
+		}
+		const ok = (result: unknown) => post({ type: 'apiResponse', id, result });
+		const error = (error: unknown) => post({ type: 'apiResponse', id, error });
+
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+		Promise.resolve((api as any)[`${key}`](...args)).then(ok, error);
 	};
 };
 

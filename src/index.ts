@@ -9,7 +9,7 @@
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 import type { SqlValue } from '@sqlite.org/sqlite-wasm';
-import type { BaseSelect, RowType } from './types.js';
+import type { BaseSelect, Bind, ImportSource, RowType, Tag } from './types.js';
 
 export type SqliteWrapper = Awaited<ReturnType<typeof initWrapper>>;
 export type WrappedDatabase = Awaited<ReturnType<SqliteWrapper['open']>>;
@@ -51,13 +51,15 @@ export default async function initWrapper(options: Options) {
 			{ once: true },
 		);
 	});
-	const okOptions = Object.fromEntries(
-		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-		Object.entries(options).filter((o) => JSON.stringify(o[1]) !== undefined),
-	);
-	worker.postMessage(okOptions);
+	const pass = (v: unknown) => typeof v !== 'function';
+	const passedEntries = Object.entries(options).filter(([, v]) => pass(v));
+	const passedOptions = Object.fromEntries(passedEntries);
+	worker.postMessage(passedOptions);
 	await promise;
 	worker.addEventListener('message', ({ data }) => {
+		if (data?.type !== 'apiResponse') {
+			return;
+		}
 		const { id, result, error } = data;
 
 		if (error) {
@@ -73,13 +75,13 @@ export default async function initWrapper(options: Options) {
 	const wrappedApi = {} as Record<string, any>;
 	let id = 0;
 
-	for (const key of ['open', 'exec', 'next', 'changes', 'dispose']) {
+	for (const key of ['import', 'open', 'exec', 'next', 'changes', 'dispose']) {
 		wrappedApi[key] = (...args: never[]) => {
 			const thisId = id++;
 			const promise = new Promise((r, j) => {
 				defers[thisId] = { resolve: r, reject: j };
 			});
-			worker.postMessage({ id: thisId, key, args });
+			worker.postMessage({ type: 'apiCall', id: thisId, key, args });
 			return promise as Promise<never>;
 		};
 	}
@@ -87,22 +89,36 @@ export default async function initWrapper(options: Options) {
 	const api = wrappedApi;
 
 	return {
+		import: async (
+			dbName: string,
+			source: ImportSource,
+			progress?: (read: number) => void,
+		) => {
+			const id = Math.random();
+			const onProgress = (event: MessageEvent) => {
+				if (event.data?.type === 'importProgress' && event.data.id === id) {
+					progress?.(event.data.processed);
+				}
+			};
+
+			if (progress) {
+				worker.addEventListener('message', onProgress);
+			}
+			await api.import(dbName, source, id);
+			worker.removeEventListener('message', onProgress);
+		},
 		open: async (dbName: string) => {
 			const db = await api.open(dbName);
 
-			type Bind = string | number | undefined | null | boolean;
-			return (
-				tmpl: TemplateStringsArray | string,
-				...values: Bind[] | [Bind[]]
-			) => {
+			const tag = ((sql: TemplateStringsArray | string, ...values: Bind[]) => {
 				let used = false;
 				async function* iter() {
 					if (used) {
 						throw new Error('Already used');
 					}
-					const sql = typeof tmpl === 'object' ? tmpl.join('?') : tmpl;
+					const sqlString = typeof sql === 'object' ? sql.join('?') : sql;
 					const bind = values.length ? values : undefined;
-					const id = await api.exec(db, sql, bind);
+					const id = await api.exec(db, sqlString, bind);
 					used = true;
 					try {
 						let next = await api.next(id);
@@ -187,11 +203,8 @@ export default async function initWrapper(options: Options) {
 				};
 
 				const rowIter = async function* () {
-					for await (const data of iter()) {
-						if (data) {
-							const [row, columns] = data;
-							yield rowType(row, columns, [{}]);
-						}
+					for await (const [row, columns] of iter()) {
+						yield rowType(row, columns, [{}]);
 					}
 				};
 
@@ -200,18 +213,40 @@ export default async function initWrapper(options: Options) {
 						Record<string, SqlValue>,
 						void
 					>,
+					/**
+					 * Runs the sql and returns the only column of the only row. Throws
+					 * if more than one row or column is returned.
+					 * This is meant for queries like `SELECT COUNT(*) FROM table`
+					 */
+					value: async () => {
+						const none = {};
+						let returns: SqlValue | object = none;
+						let index = 0;
+						for await (const [row] of iter()) {
+							if (index++) {
+								throw new Error('Expected exactly 1 row, got more');
+							}
+
+							if (row.length !== 1) {
+								throw new Error(`Expected exactly 1 column, got ${row.length}`);
+							}
+							returns = row[0] as SqlValue;
+						}
+						if (returns === none) {
+							throw new Error('Expected exactly 1 row, got none');
+						}
+						return returns as SqlValue;
+					},
 					/** Runs the sql and returns the first row */
 					one: async <Select extends BaseSelect>(...select: Select) => {
-						for await (const data of iter()) {
-							const [row, columns] = data;
+						for await (const [row, columns] of iter()) {
 							return rowType(row, columns, select) as RowType<Select>;
 						}
 					},
 					/** Runs the sql and returns all rows */
 					all: async <Select extends BaseSelect>(...select: Select) => {
 						const rows: RowType<Select>[] = [];
-						for await (const data of iter()) {
-							const [row, columns] = data;
+						for await (const [row, columns] of iter()) {
 							rows.push(rowType(row, columns, select) as RowType<Select>);
 						}
 						return rows;
@@ -223,7 +258,11 @@ export default async function initWrapper(options: Options) {
 						return api.changes(db);
 					},
 				};
-			};
+			}) as Tag;
+
+			tag.unsafe = (sql: string, values: Bind[] = []) => tag(sql, ...values);
+
+			return tag;
 		},
 	};
 }

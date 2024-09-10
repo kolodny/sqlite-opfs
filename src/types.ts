@@ -1,5 +1,7 @@
 import type { SqlValue } from '@sqlite.org/sqlite-wasm';
 
+export type ImportSource = Uint8Array | string | URL;
+
 export type Cloneable =
 	| { [key: string]: Cloneable }
 	| Cloneable[]
@@ -75,3 +77,23 @@ export type RowType<Select extends BaseSelect> = Select extends [number[]]
 // type Test6 = RowType<[number[]]>; // SqlValue[]
 // type Test7 = RowType<[[]]>; // SqlValue[]
 // type Test8 = RowType<['a', 'b']> // Record<'a' | 'b', SqlValue>
+
+export type Bind = string | number | undefined | null | boolean;
+type BaseTag = (
+	sql: TemplateStringsArray | string,
+	...values: Bind[]
+) => {
+	[Symbol.asyncIterator]: () => AsyncGenerator<Record<string, SqlValue>, void>;
+	value: () => Promise<SqlValue>;
+	one: <Select extends BaseSelect>(
+		...select: Select
+	) => Promise<undefined | RowType<Select>>;
+	all: <Select extends BaseSelect>(
+		...select: Select
+	) => Promise<RowType<Select>[]>;
+	run: () => Promise<number>;
+};
+
+export type Tag = BaseTag & {
+	unsafe: (sql: string, values?: Bind[]) => ReturnType<BaseTag>;
+};

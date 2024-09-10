@@ -1,14 +1,14 @@
 import { addHook } from 'sqlite-opfs/worker';
 
 addHook({
-	open: async (db) => {
+	onOpen: (db) => {
 		db.createFunction(
 			'add_nums',
 			(_ctx, ...args) => {
 				let sum = 0;
 
 				for (const arg of args) {
-					sum += Number(arg);
+					sum += Number(arg) || 0;
 				}
 
 				return sum;
