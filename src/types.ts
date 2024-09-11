@@ -96,4 +96,5 @@ type BaseTag = (
 
 export type Tag = BaseTag & {
 	unsafe: (sql: string, values?: Bind[]) => ReturnType<BaseTag>;
+	close: () => Promise<void>;
 };

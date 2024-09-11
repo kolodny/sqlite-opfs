@@ -75,7 +75,15 @@ export default async function initWrapper(options: Options) {
 	const wrappedApi = {} as Record<string, any>;
 	let id = 0;
 
-	for (const key of ['import', 'open', 'exec', 'next', 'changes', 'dispose']) {
+	for (const key of [
+		'import',
+		'open',
+		'close',
+		'exec',
+		'next',
+		'changes',
+		'dispose',
+	]) {
 		wrappedApi[key] = (...args: never[]) => {
 			const thisId = id++;
 			const promise = new Promise((r, j) => {
@@ -261,6 +269,7 @@ export default async function initWrapper(options: Options) {
 			}) as Tag;
 
 			tag.unsafe = (sql: string, values: Bind[] = []) => tag(sql, ...values);
+			tag.close = () => api.close(dbName);
 
 			return tag;
 		},

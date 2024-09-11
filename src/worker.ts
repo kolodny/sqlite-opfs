@@ -84,7 +84,8 @@ const start = async (options: Options = {}) => {
 
 	const api = {
 		import: async (dbName: string, source: ImportSource, id: string) => {
-			openDbs[dbName]?.close();
+			const wasOpen = !!openDbs[dbName];
+			await api.close(dbName);
 			const dir = await navigator.storage.getDirectory();
 			const file = await dir.getFileHandle(dbName, { create: true });
 			const writer = await file.createWritable();
@@ -92,6 +93,10 @@ const start = async (options: Options = {}) => {
 			if (source instanceof Uint8Array) {
 				await writer.write(source);
 				await writer.close();
+
+				if (wasOpen) {
+					await api.open(dbName);
+				}
 				return;
 			}
 
@@ -116,7 +121,13 @@ const start = async (options: Options = {}) => {
 					self.postMessage({ type: 'importProgress', id, processed });
 				}
 				await writer.close();
+				if (wasOpen) {
+					await api.open(dbName);
+				}
+				return;
 			}
+
+			throw new Error('Unsupported source type');
 		},
 		open: async (dbName: string) => {
 			if (!openDbs[dbName]) {
@@ -138,10 +149,19 @@ const start = async (options: Options = {}) => {
 
 			return dbName;
 		},
+		close: async (dbName: string) => {
+			for (const exec of Object.keys(openExecs)) {
+				if (exec.startsWith(`${dbName}:`)) {
+					await api.dispose(exec);
+				}
+			}
+			openDbs[dbName]?.close();
+			delete openDbs[dbName];
+		},
 		exec: async (dbName: string, sql: string, bind?: unknown[]) => {
 			const db = affirm(openDbs[dbName]);
 
-			const execId = Math.random().toString(36).slice(2);
+			const execId = `${dbName}:${Math.random().toString(36).slice(2)}`;
 			const stmt = db.prepare(sql);
 
 			if (bind) {
