@@ -187,6 +187,9 @@ const start = async (options: Options = {}) => {
 		},
 
 		next: (execId: string) => {
+			if (!openExecs[execId]) {
+				return { error: 'Connection closed' };
+			}
 			const exec = assert(openExecs[execId]);
 			const { done, value } = exec.next();
 			if (done) {

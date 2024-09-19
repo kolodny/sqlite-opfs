@@ -130,7 +130,13 @@ export default async function initWrapper(options: Options) {
 					used = true;
 					try {
 						let next = await api.next(id);
+						if (next?.error) {
+							throw new Error(`${next?.error}`);
+						}
 						while (!next.done) {
+							if (next?.error) {
+								throw new Error(`${next?.error}`);
+							}
 							yield next.value;
 							next = await api.next(id);
 						}

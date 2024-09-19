@@ -25,7 +25,7 @@ export const App: FunctionComponent = () => {
 
 	const exec = async () => {
 		try {
-			const rows = await db!((window as any).sql.value).all();
+			const rows = await db!.unsafe((window as any).sql.value).all();
 			console.log(rows);
 			setResults(rows as any);
 		} catch (error) {
